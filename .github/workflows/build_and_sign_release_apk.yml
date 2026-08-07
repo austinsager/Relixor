@@ -98,13 +98,23 @@ jobs:
           git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git "$HOME/depot_tools"
           echo "$HOME/depot_tools" >> "$GITHUB_PATH"
           export PATH="$HOME/depot_tools:$PATH"
-          # Run a harmless depot_tools command to trigger its internal python bootstrap and create python3_bin_reldir.txt
           gclient --version || true
+
+      - name: Ensure GN Binary Exists
+        run: |
+          export PATH="$HOME/depot_tools:$PATH"
+          # If depot_tools didn't automatically pull a standalone gn binary, download a precompiled Linux one directly
+          if ! which gn > /dev/null 2>&1; then
+            echo "Downloading standalone GN binary..."
+            curl -L https://chrome-infra-packages.appspot.com/dl/gn/gn/linux-amd64/+/latest -o "$HOME/depot_tools/gn"
+            chmod +x "$HOME/depot_tools/gn"
+          fi
 
       - name: Generate Ninja files (gn gen)
         env:
           PLATFORM: ${{ matrix.platform }}
         run: |
+          export PATH="$HOME/depot_tools:$PATH"
           gn gen "secondary_disk/out/android_${PLATFORM}"
 
       - name: Compile the Browser (ninja)
