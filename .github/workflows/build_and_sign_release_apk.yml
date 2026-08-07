@@ -1,21 +1,18 @@
-# Build APKs for Relixor Browser (Standalone)
-# checkcov:skip=CKV_GHA_7:Allowing manual dispatch parameters for custom builds
-name: 'Kiwi: Build and sign release apk'
+# Build APKs for Kiwi Browser Next
+# checkcov:skip=CKV_GHA_7:Allowing manual workflow dispatch parameters for release targets
+name: "Kiwi: Build and sign release apk"
 
 on:
-  push:
-    branches:
-      - copilot/fix-github-actions-build-arm64
   workflow_dispatch:
     inputs:
       prepareRelease:
-        description: 'Create a draft release in Google Play Store'     
+        description: "Create a draft release in Google Play Store"
         required: true
-        default: 'no'
+        default: "no"
       announceOnMessengers:
-        description: 'Announce new release on Discord and Telegram channels'     
+        description: "Announce new release on Discord and Telegram channels"
         required: true
-        default: 'yes'
+        default: "yes"
 
 permissions:
   contents: write
@@ -26,9 +23,9 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      max-parallel: 1 
+      max-parallel: 4
       matrix:
-        platform: [arm64] 
+        platform: [arm, arm64, x86, x64]
 
     steps:
       - name: Initializing build
@@ -39,34 +36,43 @@ jobs:
       - name: Updating APT repository
         run: sudo apt-get update
 
-      - name: Installing build dependencies
-        run: sudo apt-get install -y 2to3 python3-minimal python3 dh-python python-is-python3 openjdk-8-jdk-headless libncurses6 ccache jq ninja-build
+      - name: Installing rclone
+        run: sudo -v ; wget https://downloads.rclone.org/v1.63.1/rclone-v1.63.1-linux-amd64.deb && sudo dpkg -i rclone-v1.63.1-linux-amd64.deb
 
-      - name: Reclaiming disk space on /
+      - name: Installing Python and OpenJDK
+        run: sudo apt-get install -y 2to3 python3-minimal python3 dh-python python-is-python3 openjdk-8-jdk-headless ccache jq
+
+      - name: Reclaiming disk space on / by disabling swap partition
         run: |
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /opt/ghc
-          sudo rm -rf "/usr/local/share/boost"
-          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
-          sudo rm -rf /usr/local/lib/android
+          sudo swapoff -av
+          sudo rm -f /swapfile
 
-      - name: Checking-out source-code
+      - name: Reclaiming disk space on / by removing .NET framework
+        run: sudo rm -rf /usr/share/dotnet
+
+      - name: Checking-out source-code in $GITHUB_WORKSPACE
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - name: Creating secondary disk folder
+      - name: Hardening check for GN source-root usage
+        run: |
+          WORKFLOW_FILE="$GITHUB_WORKSPACE/.github/workflows/build_and_sign_release_apk.yml"
+          if grep -Eq '^[[:space:]]+gn gen([[:space:]]|$)' "$WORKFLOW_FILE"; then
+            if grep -E '^[[:space:]]+gn gen([[:space:]]|$)' "$WORKFLOW_FILE" | grep -Evq -- '(--root=|--root[[:space:]])'; then
+              echo "::error::Detected 'gn gen' without an explicit --root argument. This can fail with \"Can't find source root\"."
+              echo "::error::Use: gn gen --root=<directory-containing-.gn> <out_dir>"
+              exit 1
+            fi
+          fi
+
+      - name: Creating secondary disk folder on /dev/disk/azure/resource-part1 (SSD)
         run: |
           sudo mkdir -p /extended_data
           sudo chown -R runner:docker /extended_data
+
+      - name: On SSD - Creating symlink on /dev/disk/azure/root-part1 pointing to /dev/disk/azure/resource-part1
+        run: |
           sudo ln -s /extended_data /mnt/secondary_disk
           sudo ln -s /mnt/secondary_disk "$GITHUB_WORKSPACE/"
-
-      - name: Setup ccache
-        uses: actions/cache@v4
-        with:
-          path: ~/.ccache
-          key: ${{ runner.os }}-ccache-${{ matrix.platform }}-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-ccache-${{ matrix.platform }}-
 
       - name: Creating output folder
         env:
@@ -74,7 +80,7 @@ jobs:
         run: mkdir -p "secondary_disk/out/android_${PLATFORM}"
 
       - name: Generating one-time APK signature key
-        run: keytool -genkey -v -keystore keystore.jks -alias dev -keyalg RSA -keysize 2048 -validity 10000 -storepass public_password -keypass public_password -dname "cn=Relixor Browser (unverified), ou=Actions, o=Relixor Browser, c=GitHub"
+        run: keytool -genkey -v -keystore keystore.jks -alias dev -keyalg RSA -keysize 2048 -validity 10000 -storepass public_password -keypass public_password -dname "cn=Kiwi Browser (unverified), ou=Actions, o=Kiwi Browser, c=GitHub"
 
       - name: Copying args.gn to target folder
         env:
@@ -84,6 +90,20 @@ jobs:
           sed -e "s#target_cpu = \".*\"#target_cpu = \"${PLATFORM}\"#" \
               -e "s#android_default_version_name = \"Git\"#android_default_version_name = \"Git$(date '+%y%m%d')Gen${RUN_ID}\"#" \
               .build/production_build_reference/args.gn > "secondary_disk/out/android_${PLATFORM}/args.gn"
+
+      - name: Creating rclone config
+        env:
+          STORAGE_HOST: ${{ secrets.STORAGE_HOST }}
+          STORAGE_KEY: ${{ secrets.STORAGE_KEY }}
+        run: |
+          mkdir -p "$HOME/.config/rclone/"
+          cat <<EOF > "$HOME/.config/rclone/rclone.conf"
+          [cache]
+          type = sftp
+          host = $STORAGE_HOST
+          user = storage
+          key_pem = $STORAGE_KEY
+          EOF
 
       - name: Modifying args.gn version code
         env:
@@ -97,36 +117,42 @@ jobs:
           esac
           sed -i "s#android_default_version_code = \"1\"#android_default_version_code = \"$(date '+%y%m%d')${CODE}\"#" "secondary_disk/out/android_${PLATFORM}/args.gn"
 
-      - name: Build and Install GN Locally
-        run: |
-          git clone https://gn.googlesource.com/gn "$HOME/gn_src"
-          cd "$HOME/gn_src"
-          python3 build/gen.py
-          ninja -C out
-          mkdir -p "$HOME/bin"
-          cp out/gn "$HOME/bin/gn"
-          chmod +x "$HOME/bin/gn"
-          echo "$HOME/bin" >> "$GITHUB_PATH"
+      - name: Displaying args.gn
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: cat "secondary_disk/out/android_${PLATFORM}/args.gn"
 
-      - name: Generate Ninja files (gn gen)
+      - name: Checking available disk-space
+        run: df -h
+
+      - name: Uploading args.gn
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: rclone copy --transfers=128 --retries=10 "secondary_disk/out/android_${PLATFORM}/args.gn" "cache:kiwibrowser-next-builds-${PLATFORM}/"
+
+      - name: Downloading binary objects cache to $HOME/cache
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: rclone copy --transfers=128 --retries=10 "cache:kiwibrowser-next-builds-${PLATFORM}/" "$HOME/kiwibrowser-next-builds-${PLATFORM}"
+
+      - name: Transferring build to the standard Kiwi Browser run ID
+        env:
+          RUN_ID: ${{ github.run_id }}
+          PLATFORM: ${{ matrix.platform }}
+        run: rclone copy --transfers=128 --retries=10 "cache:kiwibrowser-next-builds-${PLATFORM}/" "cache:kiwibrowser-builds/${RUN_ID}/${PLATFORM}"
+
+      - name: Listing files
         env:
           PLATFORM: ${{ matrix.platform }}
         run: |
-          export PATH="$HOME/bin:$PATH"
-          gn gen "secondary_disk/out/android_${PLATFORM}"
-
-      - name: Compile the Browser (ninja)
-        env:
-          PLATFORM: ${{ matrix.platform }}
-        run: |
-          export PATH="$HOME/bin:$PATH"
-          ninja -C "secondary_disk/out/android_${PLATFORM}" -j 2 chrome_public_apk
+          echo "$HOME"
+          ls -la "$HOME/kiwibrowser-next-builds-${PLATFORM}"
 
       - name: Uploading APK
         uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
         with:
           name: apk-${{ matrix.platform }}
-          path: secondary_disk/out/android_${{ matrix.platform }}/apks/*.apk
+          path: /home/runner/kiwibrowser-next-builds-${{ matrix.platform }}/
 
   sign_and_upload:
     runs-on: ubuntu-latest
@@ -135,6 +161,23 @@ jobs:
     steps:
       - name: Checking-out source-code for gh CLI access
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Installing rclone
+        run: curl --http1.1 https://rclone.org/install.sh | sudo bash
+
+      - name: Creating rclone config
+        env:
+          STORAGE_HOST: ${{ secrets.STORAGE_HOST }}
+          STORAGE_KEY: ${{ secrets.STORAGE_KEY }}
+        run: |
+          mkdir -p "$HOME/.config/rclone/"
+          cat <<EOF > "$HOME/.config/rclone/rclone.conf"
+          [cache]
+          type = sftp
+          host = $STORAGE_HOST
+          user = storage
+          key_pem = $STORAGE_KEY
+          EOF
 
       - name: Downloading all APK artifacts
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
@@ -148,44 +191,87 @@ jobs:
           RUN_ID: ${{ github.run_id }}
         run: |
           {
-            if [ -f "./apks/apk-arm64/last_commits.txt" ]; then
-              cat ./apks/apk-arm64/last_commits.txt
-            else
-              echo "Automated Relixor Build"
-            fi
-            
+            cat ./apks/apk-arm/last_commits.txt
             cat <<EOT
-          
-          This version will replace your currently installed Relixor Browser.
+
+          This version will replace your currently installed Kiwi Browser (com.kiwibrowser.browser).
           If you have important data, make sure to backup them or save them before upgrading to this version.
-          
+
           This release was automatically generated from GitHub $REF in run ID $RUN_ID.
-          
+
           Summary:
-            - To install / update Relixor Browser, use "com.relixor.browser-arm64-${RUN_ID}-github.apk".
-          
+            - To install / update Kiwi Browser, use "com.kiwibrowser.browser-arm64-${RUN_ID}-github.apk".
+            If it doesn't work, try again using "com.kiwibrowser.browser-arm64-${RUN_ID}-playstore.apk" (if it exists).
+
           Detailed information about the different files:
-            - ".map" files are files that developers can use to investigate crashes (ProGuard mapping files).
-            - ".apk" files are packages that you have to install to use Relixor Browser.
+            - ".map" files are files that developers can use to investigate crashes (ProGuard mapping files), these files are not needed to run the browser and are for developers only.
+            - ".apk" files are packages that you have to install to use Kiwi Browser.
+
+          The filenames are in the form "[PACKAGE_NAME]-[ARCHITECTURE]-[BUILD_VERSION]-[SIGNATURE_TYPE].apk"
+
+          If you want to keep the Play Store version installed, and still try the GitHub edition then you can install the APKs starting with "com.kiwibrowser.browser.dev" (you will keep all your Play Store bookmarks, settings and passwords, and the GitHub edition will be installed separately).
+
+          Build version:
+           - Everytime a change is introduced in Kiwi Browser, a new build version is generated.
+
+          Architecture:
+            - "-arm64" is compatible with modern devices and offers the best performance.
+            - "-arm" is compatible with almost all devices and uses less memory.
+            - "-x86" and "-x64" builds are compatible with emulators and Intel compatible tablets.
+
+          Signature type:
+            - On Android, applications have to be signed by a developer before they can be installed.
+
+          Kiwi has two types of builds:
+
+          Signed by the developer:
+            - "-github.apk" are builds signed using the official developer key.
+          A signed build is a build that comes straight from the GitHub official repository and is always the most updated.
+
+          Play Certified by Google:
+            - Once in a while, we send a "-github.apk" build to be reviewed and signed by Google.
+
+          We then distribute "-playstore.apk" on Google Play, XDA-Developers, Samsung and other app stores.
+           
+          This process takes some time and is partially manual so not all GitHub builds have a "-playstore.apk".
+
+          On Android, you can install an update to an application only if it was signed by the same developer as the version that you currently have installed.
+
+          Essentially, if you downloaded Kiwi from an app store, you need to use the "-playstore.apk" files or uninstall the version of Kiwi you have and start using the "-github.apk" version.
           EOT
           } > release_notes.txt
 
+      - name: Signing and uploading release to GitHub and send to the Play Store
+        if: ${{ github.repository_owner == 'kiwibrowser' && contains(github.event.inputs.prepareRelease, 'yes') }}
+        env:
+          RELEASE_HOST: ${{ secrets.RELEASE_HOST }}
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          curl "https://${RELEASE_HOST}/?run_id=${RUN_ID}&dk=${DEPLOY_KEY}&publish=1&target=aab"
+
+      - name: Downloading artifacts from storage
+        if: ${{ github.repository_owner == 'kiwibrowser' }}
+        env:
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          for arch in arm arm64 x86 x64; do
+            rclone copy --transfers=128 --retries=100 "cache:kiwibrowser-builds/${RUN_ID}/${arch}/" "./apks/apk-${arch}"
+          done
+
       - name: Rename APKs for release
+        if: ${{ github.repository_owner == 'kiwibrowser' }}
         env:
           RUN_ID: ${{ github.run_id }}
         run: |
           mkdir -p release_assets
           for arch in arm arm64 x86 x64; do
-            if [ -d "./apks/apk-${arch}" ]; then
-              for apk_file in "./apks/apk-${arch}/"*.apk; do
-                [ -e "$apk_file" ] || continue
-                filename=$(basename "$apk_file")
-                cp "$apk_file" "release_assets/com.relixor.browser-${arch}-${RUN_ID}-${filename}"
-              done
-            fi
+            cp "./apks/apk-${arch}/ChromePublic-DevSigned.apk" "release_assets/com.kiwibrowser.browser-${arch}-${RUN_ID}-github.apk"
+            cp "./apks/apk-${arch}/ChromePublic-Next-DevSigned.apk" "release_assets/com.kiwibrowser.browser.dev-${arch}-${RUN_ID}-github.apk"
           done
 
       - name: Creating GitHub Release and uploading assets
+        if: ${{ github.repository_owner == 'kiwibrowser' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RUN_ID: ${{ github.run_id }}
@@ -202,13 +288,21 @@ jobs:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
           RUN_ID: ${{ github.run_id }}
         run: |
+          {
+            echo ""
+            echo ""
+            cat ./apks/apk-arm/last_commits.txt
+            echo ""
+          } > commit_message.txt
+
+          COMMIT_MSG=$(<./commit_message.txt)
           PAYLOAD=$(jq -n \
-            --arg username "Relixor Builder" \
-            --arg content "A new build of Relixor Browser (preview version) is available. - https://github.com/${{ github.repository }}/releases/tag/${RUN_ID}" \
+            --arg username "Kiwi Builder (Next)" \
+            --arg content "A new build of Kiwi Browser Next (preview version) is available. This version will replace your currently installed Kiwi Browser (com.kiwibrowser.browser) <@&913196471787065344> - https://github.com/kiwibrowser/src.next/releases/tag/${RUN_ID} ${COMMIT_MSG}" \
             '{username: $username, content: $content}')
             
           curl -H 'Content-Type: application/json' -X POST -d "$PAYLOAD" "$DISCORD_WEBHOOK"
-      
+
       - name: Send announcement on Telegram
         continue-on-error: true
         if: contains(github.event.inputs.announceOnMessengers, 'yes')
@@ -216,17 +310,32 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           RUN_ID: ${{ github.run_id }}
         run: |
+          COMMIT_MSG=$(<./commit_message.txt)
           PAYLOAD=$(jq -n \
-            --arg text "A new build of Relixor Browser (preview version) is available. Link: [${RUN_ID}](https://github.com/${{ github.repository }}/releases/tag/${RUN_ID})" \
-            --arg chat_id "@relixorbuilds" \
+            --arg text "A new build of Kiwi Browser Next (preview version) is available. Link: [${RUN_ID}](https://github.com/kiwibrowser/src.next/releases/tag/${RUN_ID}) ${COMMIT_MSG}" \
+            --arg chat_id "@kiwibrowserbuilds" \
             --arg parse_mode "markdown" \
             --argjson reply_markup "{
               \"inline_keyboard\": [
                 [
-                  {\"text\": \"arm64\", \"url\": \"https://github.com/${{ github.repository }}/releases/download/${RUN_ID}/com.relixor.browser-arm64-${RUN_ID}-github.apk\"}
+                  {\"text\": \"x86\", \"url\": \"https://github.com/kiwibrowser/src.next/releases/download/${RUN_ID}/com.kiwibrowser.browser-x86-${RUN_ID}-github.apk\"},
+                  {\"text\": \"x64\", \"url\": \"https://github.com/kiwibrowser/src.next/releases/download/${RUN_ID}/com.kiwibrowser.browser-x64-${RUN_ID}-github.apk\"}
+                ],
+                [
+                  {\"text\": \"arm\", \"url\": \"https://github.com/kiwibrowser/src.next/releases/download/${RUN_ID}/com.kiwibrowser.browser-arm-${RUN_ID}-github.apk\"},
+                  {\"text\": \"arm64\", \"url\": \"https://github.com/kiwibrowser/src.next/releases/download/${RUN_ID}/com.kiwibrowser.browser-arm64-${RUN_ID}-github.apk\"}
+                ],
+                [
+                  {\"text\": \".DEV x86\", \"url\": \"https://github.com/kiwibrowser/src.next/releases/download/${RUN_ID}/com.kiwibrowser.browser.dev-x86-${RUN_ID}-github.apk\"},
+                  {\"text\": \".DEV x64\", \"url\": \"https://github.com/kiwibrowser/src.next/releases/download/${RUN_ID}/com.kiwibrowser.browser.dev-x64-${RUN_ID}-github.apk\"}
+                ],
+                [
+                  {\"text\": \".DEV arm\", \"url\": \"https://github.com/kiwibrowser/src.next/releases/download/${RUN_ID}/com.kiwibrowser.browser.dev-arm-${RUN_ID}-github.apk\"},
+                  {\"text\": \".DEV arm64\", \"url\": \"https://github.com/kiwibrowser/src.next/releases/download/${RUN_ID}/com.kiwibrowser.browser.dev-arm64-${RUN_ID}-github.apk\"}
                 ]
               ]
             }" \
             '{text: $text, chat_id: $chat_id, parse_mode: $parse_mode, reply_markup: $reply_markup}')
             
           curl -H "Content-Type: application/json" -X POST -d "$PAYLOAD" "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage"
+
