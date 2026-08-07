@@ -22,9 +22,9 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      max-parallel: 1 # Run one at a time to prevent exhausting GitHub Actions limits
+      max-parallel: 1 
       matrix:
-        platform: [arm64] # Starting with arm64 only to test the 6-hour runner limit
+        platform: [arm64] 
 
     steps:
       - name: Initializing build
@@ -93,15 +93,17 @@ jobs:
           esac
           sed -i "s#android_default_version_code = \"1\"#android_default_version_code = \"$(date '+%y%m%d')${CODE}\"#" "secondary_disk/out/android_${PLATFORM}/args.gn"
 
-      - name: Install depot_tools (Google Build Tools)
+      - name: Install and Initialize depot_tools (Google Build Tools)
         run: |
           git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git "$HOME/depot_tools"
           echo "$HOME/depot_tools" >> "$GITHUB_PATH"
+          export PATH="$HOME/depot_tools:$PATH"
+          # Run a harmless depot_tools command to trigger its internal python bootstrap and create python3_bin_reldir.txt
+          gclient --version || true
 
       - name: Generate Ninja files (gn gen)
         env:
           PLATFORM: ${{ matrix.platform }}
-          DEPOT_TOOLS_UPDATE: 0 
         run: |
           gn gen "secondary_disk/out/android_${PLATFORM}"
 
@@ -152,21 +154,10 @@ jobs:
           
           Summary:
             - To install / update Relixor Browser, use "com.relixor.browser-arm64-${RUN_ID}-github.apk".
-            If it doesn't work, try again using "com.relixor.browser-arm64-${RUN_ID}-playstore.apk" (if it exists).
           
           Detailed information about the different files:
-            - ".map" files are files that developers can use to investigate crashes (ProGuard mapping files), these files are not needed to run the browser and are for developers only.
+            - ".map" files are files that developers can use to investigate crashes (ProGuard mapping files).
             - ".apk" files are packages that you have to install to use Relixor Browser.
-        
-          The filenames are in the form "[PACKAGE_NAME]-[ARCHITECTURE]-[BUILD_VERSION]-[SIGNATURE_TYPE].apk"
-          
-          Build version:
-           - Everytime a change is introduced, a new build version is generated.
-          
-          Architecture:
-            - "-arm64" is compatible with modern devices and offers the best performance.
-            - "-arm" is compatible with almost all devices and uses less memory.
-            - "-x86" and "-x64" builds are compatible with emulators and Intel compatible tablets.
           EOT
           } > release_notes.txt
 
@@ -175,11 +166,8 @@ jobs:
           RUN_ID: ${{ github.run_id }}
         run: |
           mkdir -p release_assets
-          # We check if the folders exist before copying, since we are currently only building arm64
           for arch in arm arm64 x86 x64; do
             if [ -d "./apks/apk-${arch}" ]; then
-              # Find the compiled APK dynamically rather than hardcoding ChromePublic-DevSigned.apk
-              # This prevents the step from failing if ninja names the output slightly differently.
               for apk_file in "./apks/apk-${arch}/"*.apk; do
                 [ -e "$apk_file" ] || continue
                 filename=$(basename "$apk_file")
@@ -205,16 +193,9 @@ jobs:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          {
-            echo ""
-            echo "Automated Relixor Build"
-            echo ""
-          } > commit_message.txt
-          
-          COMMIT_MSG=$(<./commit_message.txt)
           PAYLOAD=$(jq -n \
             --arg username "Relixor Builder" \
-            --arg content "A new build of Relixor Browser (preview version) is available. - https://github.com/${{ github.repository }}/releases/tag/${RUN_ID} ${COMMIT_MSG}" \
+            --arg content "A new build of Relixor Browser (preview version) is available. - https://github.com/${{ github.repository }}/releases/tag/${RUN_ID}" \
             '{username: $username, content: $content}')
             
           curl -H 'Content-Type: application/json' -X POST -d "$PAYLOAD" "$DISCORD_WEBHOOK"
@@ -226,9 +207,8 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           RUN_ID: ${{ github.run_id }}
         run: |
-          COMMIT_MSG=$(<./commit_message.txt)
           PAYLOAD=$(jq -n \
-            --arg text "A new build of Relixor Browser (preview version) is available. Link: [${RUN_ID}](https://github.com/${{ github.repository }}/releases/tag/${RUN_ID}) ${COMMIT_MSG}" \
+            --arg text "A new build of Relixor Browser (preview version) is available. Link: [${RUN_ID}](https://github.com/${{ github.repository }}/releases/tag/${RUN_ID})" \
             --arg chat_id "@relixorbuilds" \
             --arg parse_mode "markdown" \
             --argjson reply_markup "{
