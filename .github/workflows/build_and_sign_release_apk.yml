@@ -85,13 +85,13 @@ jobs:
           STORAGE_KEY: ${{ secrets.STORAGE_KEY }}
         run: |
           mkdir -p "$HOME/.config/rclone/"
-          cat <<EOF > "$HOME/.config/rclone/rclone.conf"
-          [cache]
-          type = sftp
-          host = $STORAGE_HOST
-          user = storage
-          key_pem = $STORAGE_KEY
-          EOF
+          {
+            echo "[cache]"
+            echo "type = sftp"
+            echo "host = $STORAGE_HOST"
+            echo "user = storage"
+            echo "key_pem = $STORAGE_KEY"
+          } > "$HOME/.config/rclone/rclone.conf"
 
       - name: Modifying args.gn version code
         env:
@@ -159,13 +159,13 @@ jobs:
           STORAGE_KEY: ${{ secrets.STORAGE_KEY }}
         run: |
           mkdir -p "$HOME/.config/rclone/"
-          cat <<EOF > "$HOME/.config/rclone/rclone.conf"
-          [cache]
-          type = sftp
-          host = $STORAGE_HOST
-          user = storage
-          key_pem = $STORAGE_KEY
-          EOF
+          {
+            echo "[cache]"
+            echo "type = sftp"
+            echo "host = $STORAGE_HOST"
+            echo "user = storage"
+            echo "key_pem = $STORAGE_KEY"
+          } > "$HOME/.config/rclone/rclone.conf"
 
       - name: Downloading all APK artifacts
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
