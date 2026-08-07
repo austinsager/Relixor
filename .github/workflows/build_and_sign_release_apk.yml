@@ -56,8 +56,9 @@ jobs:
       - name: Hardening check for GN source-root usage
         run: |
           WORKFLOW_FILE="$GITHUB_WORKSPACE/.github/workflows/build_and_sign_release_apk.yml"
-          if grep -Eq '^[[:space:]]+gn gen([[:space:]]|$)' "$WORKFLOW_FILE"; then
-            if grep -E '^[[:space:]]+gn gen([[:space:]]|$)' "$WORKFLOW_FILE" | grep -Evq -- '(--root=|--root[[:space:]])'; then
+          GN_GEN_RE='^[[:space:]]+(run:[[:space:]]+)?(\./)?gn[[:space:]]+gen([[:space:]]|$)'
+          if grep -Eq "$GN_GEN_RE" "$WORKFLOW_FILE"; then
+            if grep -E "$GN_GEN_RE" "$WORKFLOW_FILE" | grep -Evq -- '(--root=|--root[[:space:]])'; then
               echo "::error::Detected 'gn gen' without an explicit --root argument. This can fail with \"Can't find source root\"."
               echo "::error::Use: gn gen --root=<directory-containing-.gn> <out_dir>"
               exit 1
