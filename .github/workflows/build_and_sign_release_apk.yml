@@ -36,7 +36,7 @@ jobs:
         run: sudo apt-get update
 
       - name: Installing build dependencies
-        run: sudo apt-get install -y 2to3 python3-minimal python3 dh-python python-is-python3 openjdk-8-jdk-headless libncurses5 ccache jq ninja-build
+        run: sudo apt-get install -y 2to3 python3-minimal python3 dh-python python-is-python3 openjdk-8-jdk-headless libncurses6 ccache jq ninja-build
 
       - name: Reclaiming disk space on /
         run: |
