@@ -52,6 +52,17 @@ jobs:
       - name: Checking-out source-code in $GITHUB_WORKSPACE
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
+      - name: Hardening check for GN source-root usage
+        run: |
+          WORKFLOW_FILE="$GITHUB_WORKSPACE/.github/workflows/build_and_sign_release_apk.yml"
+          if grep -Eq '^[[:space:]]+gn gen([[:space:]]|$)' "$WORKFLOW_FILE"; then
+            if grep -E '^[[:space:]]+gn gen([[:space:]]|$)' "$WORKFLOW_FILE" | grep -Evq -- '(--root=|--root[[:space:]])'; then
+              echo "::error::Detected 'gn gen' without an explicit --root argument. This can fail with \"Can't find source root\"."
+              echo "::error::Use: gn gen --root=<directory-containing-.gn> <out_dir>"
+              exit 1
+            fi
+          fi
+
       - name: Creating secondary disk folder on /dev/disk/azure/resource-part1 (SSD)
         run: |
           sudo mkdir -p /extended_data
