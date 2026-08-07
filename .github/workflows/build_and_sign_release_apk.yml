@@ -85,12 +85,15 @@ jobs:
           STORAGE_KEY: ${{ secrets.STORAGE_KEY }}
         run: |
           mkdir -p "$HOME/.config/rclone/"
+          mkdir -p "$HOME/.ssh/"
+          echo "$STORAGE_KEY" > "$HOME/.ssh/kiwi_storage_key"
+          chmod 600 "$HOME/.ssh/kiwi_storage_key"
           {
             echo "[cache]"
             echo "type = sftp"
             echo "host = $STORAGE_HOST"
             echo "user = storage"
-            echo "key_pem = $STORAGE_KEY"
+            echo "key_file = $HOME/.ssh/kiwi_storage_key"
           } > "$HOME/.config/rclone/rclone.conf"
 
       - name: Modifying args.gn version code
@@ -159,12 +162,15 @@ jobs:
           STORAGE_KEY: ${{ secrets.STORAGE_KEY }}
         run: |
           mkdir -p "$HOME/.config/rclone/"
+          mkdir -p "$HOME/.ssh/"
+          echo "$STORAGE_KEY" > "$HOME/.ssh/kiwi_storage_key"
+          chmod 600 "$HOME/.ssh/kiwi_storage_key"
           {
             echo "[cache]"
             echo "type = sftp"
             echo "host = $STORAGE_HOST"
             echo "user = storage"
-            echo "key_pem = $STORAGE_KEY"
+            echo "key_file = $HOME/.ssh/kiwi_storage_key"
           } > "$HOME/.config/rclone/rclone.conf"
 
       - name: Downloading all APK artifacts
@@ -326,3 +332,4 @@ jobs:
             '{text: $text, chat_id: $chat_id, parse_mode: $parse_mode, reply_markup: $reply_markup}')
             
           curl -H "Content-Type: application/json" -X POST -d "$PAYLOAD" "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage"
+
