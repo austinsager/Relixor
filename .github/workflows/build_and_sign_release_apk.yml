@@ -59,7 +59,7 @@ jobs:
         run: sudo rm -rf /usr/share/dotnet
 
       - name: Checking-out source-code in $GITHUB_WORKSPACE
-        uses: actions/checkout@v4
+        uses: actions/checkout@v2
 
       - name: Creating secondary disk folder on /dev/disk/azure/resource-part1 (SSD)
         run: |
@@ -86,17 +86,27 @@ jobs:
         run: keytool -genkey -v -keystore keystore.jks -alias dev -keyalg RSA -keysize 2048 -validity 10000 -storepass public_password -keypass public_password -dname "cn=Kiwi Browser (unverified), ou=Actions, o=Kiwi Browser, c=GitHub"
 
       - name: Copying args.gn to target folder
-        run: sed -e "s#target_cpu = \".*\"#target_cpu = \"${{ matrix.platform }}\"#" -e "s#android_default_version_name = \"Git\"#android_default_version_name = \"Git$(date '+%y%m%d')Gen${{ github.run_id }}\"#" .build/production_build_reference/args.gn > secondary_disk/out/android_${{ matrix.platform }}/args.gn
+        env:
+          RUN_ID: ${{ github.run_id }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          sed -e "s#target_cpu = \".*\"#target_cpu = \"${PLATFORM}\"#" \
+              -e "s#android_default_version_name = \"Git\"#android_default_version_name = \"Git$(date '+%y%m%d')Gen${RUN_ID}\"#" \
+              .build/production_build_reference/args.gn > secondary_disk/out/android_${PLATFORM}/args.gn
 
       - name: Creating rclone config
+        env:
+          STORAGE_HOST: ${{ secrets.STORAGE_HOST }}
+          STORAGE_KEY: ${{ secrets.STORAGE_KEY }}
         run: |
           mkdir -p $HOME/.config/rclone/
-          echo '[cache]' > $HOME/.config/rclone/rclone.conf
-          echo 'type = sftp' >> $HOME/.config/rclone/rclone.conf
-          echo 'host = ${{ secrets.STORAGE_HOST }}' >> $HOME/.config/rclone/rclone.conf
-          echo 'user = storage' >> $HOME/.config/rclone/rclone.conf
-          echo 'key_pem = ${{ secrets.STORAGE_KEY }}' >> $HOME/.config/rclone/rclone.conf
-          echo 'key_use_agent = false' >> $HOME/.config/rclone/rclone.conf
+          cat <<EOF > $HOME/.config/rclone/rclone.conf
+          [cache]
+          type = sftp
+          host = $STORAGE_HOST
+          user = storage
+          key_pem = $STORAGE_KEY
+          EOF
 
       - name: Modifying args.gn (arm)
         if: matrix.platform == 'arm'
@@ -153,15 +163,18 @@ jobs:
         run: curl --http1.1 https://rclone.org/install.sh | sudo bash
     
       - name: Creating rclone config
+        env:
+          STORAGE_HOST: ${{ secrets.STORAGE_HOST }}
+          STORAGE_KEY: ${{ secrets.STORAGE_KEY }}
         run: |
           mkdir -p $HOME/.config/rclone/
-          echo '[cache]' > $HOME/.config/rclone/rclone.conf
-          echo 'type = sftp' >> $HOME/.config/rclone/rclone.conf
-          echo 'host = ${{ secrets.STORAGE_HOST }}' >> $HOME/.config/rclone/rclone.conf
-          echo 'user = storage' >> $HOME/.config/rclone/rclone.conf
-          echo 'key_pem = ${{ secrets.STORAGE_KEY }}' >> $HOME/.config/rclone/rclone.conf
-          echo 'key_use_agent = false' >> $HOME/.config/rclone/rclone.conf
-
+          cat <<EOF > $HOME/.config/rclone/rclone.conf
+          [cache]
+          type = sftp
+          host = $STORAGE_HOST
+          user = storage
+          key_pem = $STORAGE_KEY
+          EOF
 
       - name: Downloading artifact (arm)
         uses: actions/download-artifact@v4
@@ -263,8 +276,12 @@ jobs:
 
       - name: Signing and uploading release to GitHub and send to the Play Store
         if: ${{ github.repository_owner == 'kiwibrowser' && contains(github.event.inputs.prepareRelease, 'yes') }}
+        env:
+          RELEASE_HOST: ${{ secrets.RELEASE_HOST }}
+          DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+          RUN_ID: ${{ github.run_id }}
         run: |
-          curl 'https://${{ secrets.RELEASE_HOST }}/?run_id=${{ github.run_id }}&dk=${{ secrets.DEPLOY_KEY }}&publish=1&target=aab'
+          curl "https://${RELEASE_HOST}/?run_id=${RUN_ID}&dk=${DEPLOY_KEY}&publish=1&target=aab"
 
       - name: Downloading artifacts from storage
         if: ${{ github.repository_owner == 'kiwibrowser' }}
@@ -365,6 +382,9 @@ jobs:
       - name: Send announcement on Discord
         continue-on-error: true
         if: contains(github.event.inputs.announceOnMessengers, 'yes')
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          RUN_ID: ${{ github.run_id }}
         run: |
           echo "" > commit_message.txt
           echo "" >> commit_message.txt
@@ -372,21 +392,42 @@ jobs:
           echo "" >> commit_message.txt
           COMMIT_MSG=$(<./commit_message.txt)
           PAYLOAD=$(jq -n \
-                      --arg username "Kiwi Builder (Next)" \
-                      --arg content "A new build of Kiwi Browser Next (preview version) is available. This version will replace your currently installed Kiwi Browser (com.kiwibrowser.browser) <@&913196471787065344> - https://github.com/kiwibrowser/src.next/releases/tag/${{ github.run_id }} $COMMIT_MSG" \
-                      '{username: $username, content: $content}')
-          curl -H 'Content-Type: application/json' -X POST -d "$PAYLOAD" ${{ secrets.DISCORD_WEBHOOK }}
+            --arg username "Kiwi Builder (Next)" \
+            --arg content "A new build of Kiwi Browser Next (preview version) is available. This version will replace your currently installed Kiwi Browser (com.kiwibrowser.browser) <@&913196471787065344> - https://github.com/kiwibrowser/src.next/releases/tag/${RUN_ID} ${COMMIT_MSG}" \
+            '{username: $username, content: $content}')
+          curl -H 'Content-Type: application/json' -X POST -d "$PAYLOAD" "$DISCORD_WEBHOOK"
       
       - name: Send announcement on Telegram
         continue-on-error: true
         if: contains(github.event.inputs.announceOnMessengers, 'yes')
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          RUN_ID: ${{ github.run_id }}
         run: |
           COMMIT_MSG=$(<./commit_message.txt)
           PAYLOAD=$(jq -n \
-                      --arg text "A new build of Kiwi Browser Next (preview version) is available. Link: [${{ github.run_id }}](https://github.com/kiwibrowser/src.next/releases/tag/${{ github.run_id }}) $COMMIT_MSG" \
-                      --arg chat_id "@kiwibrowserbuilds" \
-                      --arg parse_mode "markdown" \
-                      --argjson reply_markup '{"inline_keyboard": [[{"text": "x86", "url": "https://github.com/kiwibrowser/src.next/releases/download/${{ github.run_id }}/com.kiwibrowser.browser-x86-${{ github.run_id }}-github.apk"},{"text": "x64", "url": "https://github.com/kiwibrowser/src.next/releases/download/${{ github.run_id }}/com.kiwibrowser.browser-x64-${{ github.run_id }}-github.apk"}],[{"text": "arm", "url": "https://github.com/kiwibrowser/src.next/releases/download/${{ github.run_id }}/com.kiwibrowser.browser-arm-${{ github.run_id }}-github.apk"},{"text": "arm64", "url": "https://github.com/kiwibrowser/src.next/releases/download/${{ github.run_id }}/com.kiwibrowser.browser-arm64-${{ github.run_id }}-github.apk"}],[{"text": ".DEV x86", "url": "https://github.com/kiwibrowser/src.next/releases/download/${{ github.run_id }}/com.kiwibrowser.browser.dev-x86-${{ github.run_id }}-github.apk"},{"text": ".DEV x64", "url": "https://github.com/kiwibrowser/src.next/releases/download/${{ github.run_id }}/com.kiwibrowser.browser.dev-x64-${{ github.run_id }}-github.apk"}],[{"text": ".DEV arm", "url": "https://github.com/kiwibrowser/src.next/releases/download/${{ github.run_id }}/com.kiwibrowser.browser.dev-arm-${{ github.run_id }}-github.apk"},{"text": ".DEV arm64", "url": "https://github.com/kiwibrowser/src.next/releases/download/${{ github.run_id }}/com.kiwibrowser.browser.dev-arm64-${{ github.run_id }}-github.apk"}]]}' \
-                      '{text: $text, chat_id: $chat_id, parse_mode: $parse_mode, reply_markup: $reply_markup}')
-          curl -H "Content-Type: application/json" -X POST -d "$PAYLOAD" https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendMessage
-
+            --arg text "A new build of Kiwi Browser Next (preview version) is available. Link: [${RUN_ID}](https://github.com/kiwibrowser/src.next/releases/tag/${RUN_ID}) ${COMMIT_MSG}" \
+            --arg chat_id "@kiwibrowserbuilds" \
+            --arg parse_mode "markdown" \
+            --argjson reply_markup "{
+              \"inline_keyboard\": [
+                [
+                  {\"text\": \"x86\", \"url\": \"https://github.com/kiwibrowser/src.next/releases/download/${RUN_ID}/com.kiwibrowser.browser-x86-${RUN_ID}-github.apk\"},
+                  {\"text\": \"x64\", \"url\": \"https://github.com/kiwibrowser/src.next/releases/download/${RUN_ID}/com.kiwibrowser.browser-x64-${RUN_ID}-github.apk\"}
+                ],
+                [
+                  {\"text\": \"arm\", \"url\": \"https://github.com/kiwibrowser/src.next/releases/download/${RUN_ID}/com.kiwibrowser.browser-arm-${RUN_ID}-github.apk\"},
+                  {\"text\": \"arm64\", \"url\": \"https://github.com/kiwibrowser/src.next/releases/download/${RUN_ID}/com.kiwibrowser.browser-arm64-${RUN_ID}-github.apk\"}
+                ],
+                [
+                  {\"text\": \".DEV x86\", \"url\": \"https://github.com/kiwibrowser/src.next/releases/download/${RUN_ID}/com.kiwibrowser.browser.dev-x86-${RUN_ID}-github.apk\"},
+                  {\"text\": \".DEV x64\", \"url\": \"https://github.com/kiwibrowser/src.next/releases/download/${RUN_ID}/com.kiwibrowser.browser.dev-x64-${RUN_ID}-github.apk\"}
+                ],
+                [
+                  {\"text\": \".DEV arm\", \"url\": \"https://github.com/kiwibrowser/src.next/releases/download/${RUN_ID}/com.kiwibrowser.browser.dev-arm-${RUN_ID}-github.apk\"},
+                  {\"text\": \".DEV arm64\", \"url\": \"https://github.com/kiwibrowser/src.next/releases/download/${RUN_ID}/com.kiwibrowser.browser.dev-arm64-${RUN_ID}-github.apk\"}
+                ]
+              ]
+            }" \
+            '{text: $text, chat_id: $chat_id, parse_mode: $parse_mode, reply_markup: $reply_markup}')
+          curl -H "Content-Type: application/json" -X POST -d "$PAYLOAD" "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage"
