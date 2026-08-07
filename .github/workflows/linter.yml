@@ -36,7 +36,7 @@ jobs:
       # Run Linter against code base #
       ################################
       - name: Running Super-Linter
-        uses: super-linter/super-linter/slim@v7
+        uses: super-linter/super-linter/slim@85f7611e0f7b53c8477ee9f6974057e0e7a61d15 # v7.1.0
         env:
           VALIDATE_ALL_CODEBASE: false
           DEFAULT_BRANCH: kiwi
