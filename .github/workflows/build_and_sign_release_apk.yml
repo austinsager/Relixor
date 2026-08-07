@@ -2,6 +2,9 @@
 name: 'Kiwi: Build and sign release apk'
 
 on:
+  push:
+    branches:
+      - copilot/fix-github-actions-build-arm64
   workflow_dispatch:
     inputs:
       prepareRelease:
