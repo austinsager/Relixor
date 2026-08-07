@@ -93,24 +93,28 @@ jobs:
           esac
           sed -i "s#android_default_version_code = \"1\"#android_default_version_code = \"$(date '+%y%m%d')${CODE}\"#" "secondary_disk/out/android_${PLATFORM}/args.gn"
 
-      - name: Install depot_tools & Direct GN Binary
+      - name: Build and Install GN Locally
         run: |
-          git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git "$HOME/depot_tools"
-          echo "$HOME/depot_tools" >> "$GITHUB_PATH"
+          # Clone official standalone GN source repo (extremely lightweight)
+          git clone https://gn.googlesource.com/gn "$HOME/gn_src"
+          cd "$HOME/gn_src"
           
-          # Fetch the official precompiled Linux GN binary directly from Google's CIPD storage backend
-          # and put it right into the workspace directory where depot_tools looks for it.
-          mkdir -p buildtools/linux64
-          curl -L https://chrome-infra-packages.appspot.com/dl/gn/gn/linux-amd64/+/latest -o buildtools/linux64/gn
-          chmod +x buildtools/linux64/gn
+          # Build the native binary using Python and Ninja
+          python3 build/gen.py
+          ninja -C out
+          
+          # Move the compiled binary into a persistent path
+          mkdir -p "$HOME/bin"
+          cp out/gn "$HOME/bin/gn"
+          chmod +x "$HOME/bin/gn"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
 
-      - name: Generate Ninja files (gn gen)
+       - name: Generate Ninja files (gn gen)
         env:
           PLATFORM: ${{ matrix.platform }}
         run: |
-          export PATH="$HOME/depot_tools:$PATH"
-          # Directly call the binary or let buildtools handle it without path errors
-          ./buildtools/linux64/gn gen "secondary_disk/out/android_${PLATFORM}"
+          export PATH="$HOME/bin:$PATH"
+          gn gen "secondary_disk/out/android_${PLATFORM}"
 
       - name: Compile the Browser (ninja)
         env:
