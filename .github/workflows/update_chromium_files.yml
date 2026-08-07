@@ -81,17 +81,20 @@ jobs:
           BUILD: ${{ github.event.inputs.NEW_CHROMIUM_BUILD }}
           PATCH: ${{ github.event.inputs.NEW_CHROMIUM_PATCH }}
         run: |
-          echo "CHROMIUM_MAJOR=$MAJOR" > CHROMIUM_VERSION
-          echo "CHROMIUM_MINOR=$MINOR" >> CHROMIUM_VERSION
-          echo "CHROMIUM_BUILD=$BUILD" >> CHROMIUM_VERSION
-          echo "CHROMIUM_PATCH=$PATCH" >> CHROMIUM_VERSION
+          {
+            echo "CHROMIUM_MAJOR=$MAJOR"
+            echo "CHROMIUM_MINOR=$MINOR"
+            echo "CHROMIUM_BUILD=$BUILD"
+            echo "CHROMIUM_PATCH=$PATCH"
+          } > CHROMIUM_VERSION
 
       - name: Set PR variables
         env:
           NEW_VER: "${{ github.event.inputs.NEW_CHROMIUM_MAJOR }}.${{ github.event.inputs.NEW_CHROMIUM_MINOR }}.${{ github.event.inputs.NEW_CHROMIUM_BUILD }}.${{ github.event.inputs.NEW_CHROMIUM_PATCH }}"
         run: |
           echo "NEW_VERSION=$NEW_VER" >> "$GITHUB_ENV"
-          if [ -n "$CHROMIUM_MAJOR" ]; then
+          if [ -n "${CHROMIUM_MAJOR:-}" ]; then
+            # shellcheck disable=SC2153
             echo "OLD_VERSION=${CHROMIUM_MAJOR}.${CHROMIUM_MINOR}.${CHROMIUM_BUILD}.${CHROMIUM_PATCH}" >> "$GITHUB_ENV"
           else
             echo "OLD_VERSION=Unknown" >> "$GITHUB_ENV"
