@@ -107,9 +107,10 @@ jobs:
       - name: Generate Ninja files (gn gen)
         env:
           PLATFORM: ${{ matrix.platform }}
+          DEPOT_TOOLS_GN_PATH: "$HOME/gn_bin/gn"
         run: |
-          export PATH="$HOME/gn_bin:$HOME/depot_tools:$PATH"
-          gn gen "secondary_disk/out/android_${PLATFORM}"
+          # Use the absolute path to the direct gn binary or bypass depot_tools wrapper completely
+          "$HOME/gn_bin/gn" gen "secondary_disk/out/android_${PLATFORM}"
 
       - name: Compile the Browser (ninja)
         env:
