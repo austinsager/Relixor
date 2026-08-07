@@ -93,24 +93,28 @@ jobs:
           esac
           sed -i "s#android_default_version_code = \"1\"#android_default_version_code = \"$(date '+%y%m%d')${CODE}\"#" "secondary_disk/out/android_${PLATFORM}/args.gn"
 
-      - name: Install depot_tools and Direct GN Binary
+      - name: Install and Initialize depot_tools
         run: |
           git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git "$HOME/depot_tools"
           echo "$HOME/depot_tools" >> "$GITHUB_PATH"
+          export PATH="$HOME/depot_tools:$PATH"
           
-          # Directly download the official precompiled Linux GN binary to satisfy depot_tools wrapper requirements
-          mkdir -p "$HOME/gn_bin"
-          curl -L https://chrome-infra-packages.appspot.com/dl/gn/gn/linux-amd64/+/latest -o "$HOME/gn_bin/gn" || true
-          chmod +x "$HOME/gn_bin/gn"
-          echo "$HOME/gn_bin" >> "$GITHUB_PATH"
+          # Force depot_tools to bootstrap its internal packages (including the correct linux-amd64 gn binary)
+          gclient --version || true
 
       - name: Generate Ninja files (gn gen)
         env:
           PLATFORM: ${{ matrix.platform }}
-          DEPOT_TOOLS_GN_PATH: "$HOME/gn_bin/gn"
         run: |
-          # Use the absolute path to the direct gn binary or bypass depot_tools wrapper completely
-          "$HOME/gn_bin/gn" gen "secondary_disk/out/android_${PLATFORM}"
+          export PATH="$HOME/depot_tools:$PATH"
+          
+          # If depot_tools downloaded the binary during bootstrap, it will be in the cipd cache or path.
+          # Let's verify and invoke it via python if the wrapper fails:
+          if [ -f "$HOME/depot_tools/gn" ]; then
+            "$HOME/depot_tools/gn" gen "secondary_disk/out/android_${PLATFORM}"
+          else
+            python3 "$HOME/depot_tools/gn.py" gen "secondary_disk/out/android_${PLATFORM}"
+          fi
 
       - name: Compile the Browser (ninja)
         env:
