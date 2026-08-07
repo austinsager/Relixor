@@ -36,16 +36,15 @@ jobs:
         run: sudo apt-get update
 
       - name: Installing build dependencies
-        run: sudo apt-get install -y 2to3 python3-minimal python3 dh-python python-is-python3 openjdk-8-jdk-headless ccache jq ninja-build
+        run: sudo apt-get install -y 2to3 python3-minimal python3 dh-python python-is-python3 openjdk-8-jdk-headless libncurses5 ccache jq ninja-build
 
       - name: Reclaiming disk space on /
         run: |
-          sudo swapoff -av
-          sudo rm -f /swapfile
           sudo rm -rf /usr/share/dotnet
           sudo rm -rf /opt/ghc
           sudo rm -rf "/usr/local/share/boost"
           sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          sudo rm -rf /usr/local/lib/android
 
       - name: Checking-out source-code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -94,22 +93,151 @@ jobs:
           esac
           sed -i "s#android_default_version_code = \"1\"#android_default_version_code = \"$(date '+%y%m%d')${CODE}\"#" "secondary_disk/out/android_${PLATFORM}/args.gn"
 
+      - name: Install depot_tools (Google Build Tools)
+        run: |
+          git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git "$HOME/depot_tools"
+          echo "$HOME/depot_tools" >> "$GITHUB_PATH"
+
       - name: Generate Ninja files (gn gen)
         env:
           PLATFORM: ${{ matrix.platform }}
+          DEPOT_TOOLS_UPDATE: 0 
         run: |
-          # Execute Google's gn tool to generate the ninja build files
           gn gen "secondary_disk/out/android_${PLATFORM}"
 
       - name: Compile the Browser (ninja)
         env:
           PLATFORM: ${{ matrix.platform }}
         run: |
-          # This kicks off the actual local compilation. It may take several hours.
-          ninja -C "secondary_disk/out/android_${PLATFORM}" chrome_public_apk
+          ninja -C "secondary_disk/out/android_${PLATFORM}" -j 2 chrome_public_apk
 
       - name: Uploading APK
         uses: actions/upload-artifact@b4b15b8c7c6ac21ea08fcf65892d2ee8f75cf882 # v4.4.3
         with:
           name: apk-${{ matrix.platform }}
           path: secondary_disk/out/android_${{ matrix.platform }}/apks/*.apk
+
+  sign_and_upload:
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Checking-out source-code for gh CLI access
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Downloading all APK artifacts
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        with:
+          pattern: apk-*
+          path: apks
+
+      - name: Prepare release notes
+        env:
+          REF: ${{ github.ref }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          {
+            if [ -f "./apks/apk-arm64/last_commits.txt" ]; then
+              cat ./apks/apk-arm64/last_commits.txt
+            else
+              echo "Automated Relixor Build"
+            fi
+            
+            cat <<EOT
+          
+          This version will replace your currently installed Relixor Browser.
+          If you have important data, make sure to backup them or save them before upgrading to this version.
+          
+          This release was automatically generated from GitHub $REF in run ID $RUN_ID.
+          
+          Summary:
+            - To install / update Relixor Browser, use "com.relixor.browser-arm64-${RUN_ID}-github.apk".
+            If it doesn't work, try again using "com.relixor.browser-arm64-${RUN_ID}-playstore.apk" (if it exists).
+          
+          Detailed information about the different files:
+            - ".map" files are files that developers can use to investigate crashes (ProGuard mapping files), these files are not needed to run the browser and are for developers only.
+            - ".apk" files are packages that you have to install to use Relixor Browser.
+        
+          The filenames are in the form "[PACKAGE_NAME]-[ARCHITECTURE]-[BUILD_VERSION]-[SIGNATURE_TYPE].apk"
+          
+          Build version:
+           - Everytime a change is introduced, a new build version is generated.
+          
+          Architecture:
+            - "-arm64" is compatible with modern devices and offers the best performance.
+            - "-arm" is compatible with almost all devices and uses less memory.
+            - "-x86" and "-x64" builds are compatible with emulators and Intel compatible tablets.
+          EOT
+          } > release_notes.txt
+
+      - name: Rename APKs for release
+        env:
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          mkdir -p release_assets
+          # We check if the folders exist before copying, since we are currently only building arm64
+          for arch in arm arm64 x86 x64; do
+            if [ -d "./apks/apk-${arch}" ]; then
+              # Find the compiled APK dynamically rather than hardcoding ChromePublic-DevSigned.apk
+              # This prevents the step from failing if ninja names the output slightly differently.
+              for apk_file in "./apks/apk-${arch}/"*.apk; do
+                [ -e "$apk_file" ] || continue
+                filename=$(basename "$apk_file")
+                cp "$apk_file" "release_assets/com.relixor.browser-${arch}-${RUN_ID}-${filename}"
+              done
+            fi
+          done
+
+      - name: Creating GitHub Release and uploading assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          gh release create "$RUN_ID" release_assets/* \
+            --title "Generation $RUN_ID" \
+            --notes-file release_notes.txt \
+            --prerelease
+
+      - name: Send announcement on Discord
+        continue-on-error: true
+        if: contains(github.event.inputs.announceOnMessengers, 'yes')
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          {
+            echo ""
+            echo "Automated Relixor Build"
+            echo ""
+          } > commit_message.txt
+          
+          COMMIT_MSG=$(<./commit_message.txt)
+          PAYLOAD=$(jq -n \
+            --arg username "Relixor Builder" \
+            --arg content "A new build of Relixor Browser (preview version) is available. - https://github.com/${{ github.repository }}/releases/tag/${RUN_ID} ${COMMIT_MSG}" \
+            '{username: $username, content: $content}')
+            
+          curl -H 'Content-Type: application/json' -X POST -d "$PAYLOAD" "$DISCORD_WEBHOOK"
+      
+      - name: Send announcement on Telegram
+        continue-on-error: true
+        if: contains(github.event.inputs.announceOnMessengers, 'yes')
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          COMMIT_MSG=$(<./commit_message.txt)
+          PAYLOAD=$(jq -n \
+            --arg text "A new build of Relixor Browser (preview version) is available. Link: [${RUN_ID}](https://github.com/${{ github.repository }}/releases/tag/${RUN_ID}) ${COMMIT_MSG}" \
+            --arg chat_id "@relixorbuilds" \
+            --arg parse_mode "markdown" \
+            --argjson reply_markup "{
+              \"inline_keyboard\": [
+                [
+                  {\"text\": \"arm64\", \"url\": \"https://github.com/${{ github.repository }}/releases/download/${RUN_ID}/com.relixor.browser-arm64-${RUN_ID}-github.apk\"}
+                ]
+              ]
+            }" \
+            '{text: $text, chat_id: $chat_id, parse_mode: $parse_mode, reply_markup: $reply_markup}')
+            
+          curl -H "Content-Type: application/json" -X POST -d "$PAYLOAD" "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage"
