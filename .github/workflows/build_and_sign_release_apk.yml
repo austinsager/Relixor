@@ -93,34 +93,29 @@ jobs:
           esac
           sed -i "s#android_default_version_code = \"1\"#android_default_version_code = \"$(date '+%y%m%d')${CODE}\"#" "secondary_disk/out/android_${PLATFORM}/args.gn"
 
-      - name: Install and Initialize depot_tools (Google Build Tools)
+      - name: Install depot_tools and Direct GN Binary
         run: |
           git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git "$HOME/depot_tools"
           echo "$HOME/depot_tools" >> "$GITHUB_PATH"
-          export PATH="$HOME/depot_tools:$PATH"
-          gclient --version || true
-
-      - name: Ensure GN Binary Exists
-        run: |
-          export PATH="$HOME/depot_tools:$PATH"
-          # If depot_tools didn't automatically pull a standalone gn binary, download a precompiled Linux one directly
-          if ! which gn > /dev/null 2>&1; then
-            echo "Downloading standalone GN binary..."
-            curl -L https://chrome-infra-packages.appspot.com/dl/gn/gn/linux-amd64/+/latest -o "$HOME/depot_tools/gn"
-            chmod +x "$HOME/depot_tools/gn"
-          fi
+          
+          # Directly download the official precompiled Linux GN binary to satisfy depot_tools wrapper requirements
+          mkdir -p "$HOME/gn_bin"
+          curl -L https://chrome-infra-packages.appspot.com/dl/gn/gn/linux-amd64/+/latest -o "$HOME/gn_bin/gn" || true
+          chmod +x "$HOME/gn_bin/gn"
+          echo "$HOME/gn_bin" >> "$GITHUB_PATH"
 
       - name: Generate Ninja files (gn gen)
         env:
           PLATFORM: ${{ matrix.platform }}
         run: |
-          export PATH="$HOME/depot_tools:$PATH"
+          export PATH="$HOME/gn_bin:$HOME/depot_tools:$PATH"
           gn gen "secondary_disk/out/android_${PLATFORM}"
 
       - name: Compile the Browser (ninja)
         env:
           PLATFORM: ${{ matrix.platform }}
         run: |
+          export PATH="$HOME/gn_bin:$HOME/depot_tools:$PATH"
           ninja -C "secondary_disk/out/android_${PLATFORM}" -j 2 chrome_public_apk
 
       - name: Uploading APK
