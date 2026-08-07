@@ -1,4 +1,4 @@
-# Build APKs for Relixor Browser (Standalone Compilation)
+# Build APKs for Relixor Browser (Standalone)
 name: 'Kiwi: Build and sign release apk'
 
 on:
