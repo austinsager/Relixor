@@ -14,7 +14,7 @@ on:
         default: 'yes'
 
 permissions:
-  contents: write
+  contents: write # Required by Checkov to upload releases
   pull-requests: read
 
 jobs:
