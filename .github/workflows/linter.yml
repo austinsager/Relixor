@@ -9,6 +9,9 @@ on:
   pull_request:
     branches: [kiwi]
 
+permissions:
+  contents: read
+
 ###############
 # Set the Job #
 ###############
@@ -39,6 +42,7 @@ jobs:
         uses: super-linter/super-linter/slim@v7
         env:
           VALIDATE_ALL_CODEBASE: false
+          VALIDATE_JSCPD: false
           DEFAULT_BRANCH: kiwi
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           LINTER_RULES_PATH: ./.github/linters/

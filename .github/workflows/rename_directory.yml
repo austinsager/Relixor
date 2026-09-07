@@ -1,23 +1,27 @@
-name: 'Any branch: Rename directory'
+#checkov:skip=CKV_GHA_7:Manual workflow inputs are required to select source and destination paths
+name: "Any branch: Rename directory"
 
 on:
   workflow_dispatch:
     inputs:
       source_directory:
-        description: 'Source directory path'     
+        description: "Source directory path"
         required: true
       destination_directory:
-        description: 'Destination directory path'     
+        description: "Destination directory path"
         required: true
+
+permissions:
+  contents: write
 
 jobs:
   rename:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - run: ls -laR
-      
+
       - run: git mv ${{ github.event.inputs.source_directory }} ${{ github.event.inputs.destination_directory }}
-      
+
       - uses: EndBug/add-and-commit@v5.1.0

@@ -1,5 +1,5 @@
 # Build APKs for Relixor Browser
-name: 'Any branch: Build APK'
+name: "Any branch: Build APK"
 
 on:
   pull_request:
@@ -8,6 +8,9 @@ on:
   workflow_dispatch:
 
 concurrency: build_test_apk
+
+permissions:
+  contents: read
 
 jobs:
   build:

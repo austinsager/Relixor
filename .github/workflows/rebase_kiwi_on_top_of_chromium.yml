@@ -1,7 +1,10 @@
-name: 'Kiwi: Rebase on top of kiwibrowser:chromium branch'
+name: "Kiwi: Rebase on top of kiwibrowser:chromium branch"
 
 on:
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -12,7 +15,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-        
+
       - name: Setting-up GitHub username
         run: |
           git config --global user.email "github@actions"
