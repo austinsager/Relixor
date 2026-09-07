@@ -1,3 +1,4 @@
+# checkov:skip=CKV_GHA_7:Manual workflow inputs are required to specify the target Chromium version
 name: 'Chromium: Update files from upstream'
 
 on:
@@ -19,6 +20,10 @@ on:
         description: 'Patch version of Chromium'     
         required: true
         default: '25'
+
+permissions:
+  contents: write
+  pull-requests: write
 
 jobs:
   build:

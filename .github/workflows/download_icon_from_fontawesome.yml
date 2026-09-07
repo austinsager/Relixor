@@ -1,3 +1,4 @@
+# checkov:skip=CKV_GHA_7:Manual workflow inputs are required to choose and transform icons
 name: 'Kiwi: Download icon from fontawesome'
 
 on:
@@ -15,7 +16,10 @@ on:
       fileNameInChromium:
         description: 'Name of the icon in Chromium'     
         required: true
-      
+
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest

@@ -9,6 +9,9 @@ on:
 
 concurrency: build_test_apk
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest

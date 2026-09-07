@@ -1,5 +1,6 @@
 # Import a file from Chromium, relative path to https://source.chromium.org/chromium/chromium/src
 # In case the file is in a drawable-* folder (e.g. drawable-mdpi), all the adjacent (mdpi, xhdpi, etc) assets for the same file will be imported. 
+# checkov:skip=CKV_GHA_7:Manual workflow input is required to choose the Chromium file path
 name: 'Chromium: Import file'
 
 on:
@@ -9,6 +10,9 @@ on:
         description: 'Path in Chromium repository'     
         required: true
         default: ''
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -88,4 +92,3 @@ jobs:
 
       - name: Pushing repository
         run: git push origin chromium
-

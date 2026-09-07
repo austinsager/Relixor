@@ -1,3 +1,4 @@
+# checkov:skip=CKV_GHA_7:Manual workflow inputs are required to select source and destination paths
 name: 'Any branch: Rename directory'
 
 on:
@@ -9,6 +10,9 @@ on:
       destination_directory:
         description: 'Destination directory path'     
         required: true
+
+permissions:
+  contents: write
 
 jobs:
   rename:
