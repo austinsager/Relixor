@@ -1,4 +1,4 @@
-#checkov:skip=CKV_GHA_7:Manual workflow inputs are required to choose and transform icons
+#checkov:skip=CKV_GHA_7:Admin-only manual inputs are required to choose and transform icon assets for Chromium
 name: "Kiwi: Download icon from fontawesome"
 
 on:
@@ -55,12 +55,52 @@ jobs:
       - name: Install ImageMagick
         run: sudo apt-get install imagemagick
 
+      - name: Validate icon inputs
+        env:
+          ICON_NAME_FA: ${{ github.event.inputs.iconNameFA }}
+          ICON_TYPE_FA: ${{ github.event.inputs.iconTypeFA }}
+          FILE_NAME_IN_CHROMIUM: ${{ github.event.inputs.fileNameInChromium }}
+          FILL_COLOR: ${{ github.event.inputs.fillColor }}
+        run: |
+          case "$ICON_TYPE_FA" in
+            solid|regular|brands|light|duotone|thin|sharp-solid|sharp-regular|sharp-light) ;;
+            *)
+              echo "::error::Invalid Font Awesome icon type: $ICON_TYPE_FA"
+              exit 1
+              ;;
+          esac
+
+          if [[ ! "$ICON_NAME_FA" =~ ^[a-z0-9-]+$ ]]; then
+            echo "::error::Invalid icon name: $ICON_NAME_FA"
+            exit 1
+          fi
+
+          if [ -z "$FILE_NAME_IN_CHROMIUM" ] || [[ "$FILE_NAME_IN_CHROMIUM" == */* ]] || [[ "$FILE_NAME_IN_CHROMIUM" == *$'\n'* ]]; then
+            echo "::error::Invalid Chromium icon filename: $FILE_NAME_IN_CHROMIUM"
+            exit 1
+          fi
+
+          if [ -n "$FILL_COLOR" ] && [[ ! "$FILL_COLOR" =~ ^#[0-9A-Fa-f]{3,8}$ ]]; then
+            echo "::error::fillColor must be a hex color like #000, #fff, or #aabbccdd"
+            exit 1
+          fi
+
       - name: Execute Script - Replace icons with new FA ones
-        run: bash ./toolbox/icon_update_script.sh "./node_modules/${{ steps.fa-package.outputs.module_path }}/svgs/${{ github.event.inputs.iconTypeFA }}/${{ github.event.inputs.iconNameFA }}.svg" "${{ github.event.inputs.fileNameInChromium }}" "${{ github.event.inputs.fillColor }}"
+        env:
+          MODULE_PATH: ${{ steps.fa-package.outputs.module_path }}
+          ICON_NAME_FA: ${{ github.event.inputs.iconNameFA }}
+          ICON_TYPE_FA: ${{ github.event.inputs.iconTypeFA }}
+          FILE_NAME_IN_CHROMIUM: ${{ github.event.inputs.fileNameInChromium }}
+          FILL_COLOR: ${{ github.event.inputs.fillColor }}
+        run: |
+          bash ./toolbox/icon_update_script.sh \
+            "./node_modules/${MODULE_PATH}/svgs/${ICON_TYPE_FA}/${ICON_NAME_FA}.svg" \
+            "$FILE_NAME_IN_CHROMIUM" \
+            "$FILL_COLOR"
 
       - name: Git Auto Commit
         uses: stefanzweifel/git-auto-commit-action@v4.11.0
         with:
           # Commit message
-          commit_message: Update ${{ github.event.inputs.fileNameInChromium }} with ${{ github.event.inputs.iconTypeFA }}/${{ github.event.inputs.iconNameFA }} icon
+          commit_message: Update ${{ github.event.inputs.fileNameInChromium }} with vetted Font Awesome icon import
           file_pattern: ./*.png

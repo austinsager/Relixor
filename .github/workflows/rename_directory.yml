@@ -1,4 +1,4 @@
-#checkov:skip=CKV_GHA_7:Manual workflow inputs are required to select source and destination paths
+#checkov:skip=CKV_GHA_7:Admin-only manual inputs are required to select source and destination directories for this maintenance workflow
 name: "Any branch: Rename directory"
 
 on:
@@ -22,6 +22,22 @@ jobs:
 
       - run: ls -laR
 
-      - run: git mv ${{ github.event.inputs.source_directory }} ${{ github.event.inputs.destination_directory }}
+      - name: Validate directory paths
+        env:
+          SOURCE_DIRECTORY: ${{ github.event.inputs.source_directory }}
+          DESTINATION_DIRECTORY: ${{ github.event.inputs.destination_directory }}
+        run: |
+          for path_value in "$SOURCE_DIRECTORY" "$DESTINATION_DIRECTORY"; do
+            if [ -z "$path_value" ] || [ "${path_value#/}" != "$path_value" ] || [ "${path_value#../}" != "$path_value" ] || [[ "$path_value" == *"/../"* ]] || [[ "$path_value" == *$'\n'* ]]; then
+              echo "::error::Invalid directory path: $path_value"
+              exit 1
+            fi
+          done
+
+      - name: Rename directory
+        env:
+          SOURCE_DIRECTORY: ${{ github.event.inputs.source_directory }}
+          DESTINATION_DIRECTORY: ${{ github.event.inputs.destination_directory }}
+        run: git mv -- "$SOURCE_DIRECTORY" "$DESTINATION_DIRECTORY"
 
       - uses: EndBug/add-and-commit@v5.1.0

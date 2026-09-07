@@ -1,4 +1,4 @@
-#checkov:skip=CKV_GHA_7:Allowing manual workflow dispatch parameters for release targets
+#checkov:skip=CKV_GHA_7:Admin-only manual dispatch flags are required to control release publication and announcements
 # Build APKs for Kiwi Browser Next
 name: "Kiwi: Build and sign release apk"
 
@@ -8,10 +8,18 @@ on:
       prepareRelease:
         description: "Create a draft release in Google Play Store"
         required: true
+        type: choice
+        options:
+          - "yes"
+          - "no"
         default: "no"
       announceOnMessengers:
         description: "Announce new release on Discord and Telegram channels"
         required: true
+        type: choice
+        options:
+          - "yes"
+          - "no"
         default: "yes"
 
 permissions:
@@ -243,7 +251,7 @@ jobs:
           } > release_notes.txt
 
       - name: Signing and uploading release to GitHub and send to the Play Store
-        if: ${{ github.repository_owner == 'kiwibrowser' && contains(github.event.inputs.prepareRelease, 'yes') }}
+        if: ${{ github.repository_owner == 'kiwibrowser' && github.event.inputs.prepareRelease == 'yes' }}
         env:
           RELEASE_HOST: ${{ secrets.RELEASE_HOST }}
           DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
@@ -284,7 +292,7 @@ jobs:
 
       - name: Send announcement on Discord
         continue-on-error: true
-        if: contains(github.event.inputs.announceOnMessengers, 'yes')
+        if: github.event.inputs.announceOnMessengers == 'yes'
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
           RUN_ID: ${{ github.run_id }}
@@ -306,7 +314,7 @@ jobs:
 
       - name: Send announcement on Telegram
         continue-on-error: true
-        if: contains(github.event.inputs.announceOnMessengers, 'yes')
+        if: github.event.inputs.announceOnMessengers == 'yes'
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           RUN_ID: ${{ github.run_id }}
