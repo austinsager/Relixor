@@ -1,7 +1,8 @@
-#checkov:skip=CKV_GHA_7:Manual workflow inputs are required to select the file to purge
+#checkov:skip=CKV_GHA_7:Admin-only manual input is required to choose the repository file to purge from history
 name: "Any branch: Delete a committed file"
 
 on:
+  #checkov:skip=CKV_GHA_7:Manual dispatch input is intentionally required for repository history maintenance
   workflow_dispatch:
     inputs:
       filename:
@@ -25,7 +26,14 @@ jobs:
           git config --global user.name "Repository manager"
 
       - name: Deleting file from history
+        env:
+          FILENAME: ${{ github.event.inputs.filename }}
         run: |
-          git filter-branch --force --index-filter "git rm --cached --ignore-unmatch ${{ github.event.inputs.filename }}" --prune-empty --tag-name-filter cat -- --all
+          if [ -z "$FILENAME" ] || [ "${FILENAME#/}" != "$FILENAME" ] || [ "${FILENAME#../}" != "$FILENAME" ] || [[ "$FILENAME" == *"/../"* ]] || [[ "$FILENAME" == *"'"* ]] || [[ "$FILENAME" == *$'\n'* ]]; then
+            echo "::error::Invalid file path: $FILENAME"
+            exit 1
+          fi
+          export TARGET_FILE="$FILENAME"
+          git filter-branch --force --index-filter 'git rm --cached --ignore-unmatch -- "$TARGET_FILE"' --prune-empty --tag-name-filter cat -- --all
 
       - run: git push --force --all

@@ -1,9 +1,10 @@
-#checkov:skip=CKV_GHA_7:Manual workflow input is required to choose the Chromium file path
+#checkov:skip=CKV_GHA_7:Admin-only manual input is required to choose which Chromium file path to import
 # Import a file from Chromium, relative path to https://source.chromium.org/chromium/chromium/src
 # In case the file is in a drawable-* folder (e.g. drawable-mdpi), all the adjacent (mdpi, xhdpi, etc) assets for the same file will be imported.
 name: "Chromium: Import file"
 
 on:
+  #checkov:skip=CKV_GHA_7:Manual dispatch input is intentionally required to select the Chromium file import target
   workflow_dispatch:
     inputs:
       path:
@@ -43,10 +44,23 @@ jobs:
             echo "$key=$value" >> "$GITHUB_ENV"
           done < CHROMIUM_VERSION
 
+      - name: Validate Chromium file path input
+        env:
+          FILE_PATH: ${{ github.event.inputs.path }}
+        run: |
+          if [ -z "$FILE_PATH" ] || [ "${FILE_PATH#/}" != "$FILE_PATH" ] || [ "${FILE_PATH#../}" != "$FILE_PATH" ] || [[ "$FILE_PATH" == *"/../"* ]] || [[ "$FILE_PATH" == *".." ]] || [[ "$FILE_PATH" == *$'\n'* ]]; then
+            echo "::error::Invalid file path: $FILE_PATH"
+            exit 1
+          fi
+
       - name: Downloading file
         env:
           FILE_PATH: ${{ github.event.inputs.path }}
-        run: wget "https://chromium.googlesource.com/chromium/src/+/refs/tags/${{ env.CHROMIUM_MAJOR }}.${{ env.CHROMIUM_MINOR }}.${{ env.CHROMIUM_BUILD }}.${{ env.CHROMIUM_PATCH }}/${FILE_PATH}?format=TEXT" -O /tmp/file.txt
+          CHROMIUM_MAJOR: ${{ env.CHROMIUM_MAJOR }}
+          CHROMIUM_MINOR: ${{ env.CHROMIUM_MINOR }}
+          CHROMIUM_BUILD: ${{ env.CHROMIUM_BUILD }}
+          CHROMIUM_PATCH: ${{ env.CHROMIUM_PATCH }}
+        run: wget "https://chromium.googlesource.com/chromium/src/+/refs/tags/${CHROMIUM_MAJOR}.${CHROMIUM_MINOR}.${CHROMIUM_BUILD}.${CHROMIUM_PATCH}/${FILE_PATH}?format=TEXT" -O /tmp/file.txt
 
       - name: Creating folder where the file is stored
         env:
@@ -68,6 +82,10 @@ jobs:
         continue-on-error: true
         env:
           FILE_PATH: ${{ github.event.inputs.path }}
+          CHROMIUM_MAJOR: ${{ env.CHROMIUM_MAJOR }}
+          CHROMIUM_MINOR: ${{ env.CHROMIUM_MINOR }}
+          CHROMIUM_BUILD: ${{ env.CHROMIUM_BUILD }}
+          CHROMIUM_PATCH: ${{ env.CHROMIUM_PATCH }}
         run: |
           for image_folder in drawable mipmap
           do
@@ -77,7 +95,7 @@ jobs:
               adjacent_target_file=$(echo "${FILE_PATH}" | sed -E "s#(\-mdpi|\-hdpi|\-xhdpi|\-xxhdpi|\-xxxhdpi)/#-${resolution_folder}/#g")
               rm -f /tmp/file.txt
               
-              if wget "https://chromium.googlesource.com/chromium/src/+/refs/tags/${{ env.CHROMIUM_MAJOR }}.${{ env.CHROMIUM_MINOR }}.${{ env.CHROMIUM_BUILD }}.${{ env.CHROMIUM_PATCH }}/${adjacent_target_file}?format=TEXT" -O /tmp/file.txt; then
+              if wget "https://chromium.googlesource.com/chromium/src/+/refs/tags/${CHROMIUM_MAJOR}.${CHROMIUM_MINOR}.${CHROMIUM_BUILD}.${CHROMIUM_PATCH}/${adjacent_target_file}?format=TEXT" -O /tmp/file.txt; then
                 mkdir -p "$(dirname "${adjacent_target_file}")"
                 base64 --decode < /tmp/file.txt > "${adjacent_target_file}"
                 git add "${adjacent_target_file}"

@@ -1,7 +1,8 @@
-#checkov:skip=CKV_GHA_7:Manual workflow inputs are required to specify the target Chromium version
+#checkov:skip=CKV_GHA_7:Admin-only manual inputs are required to specify the target Chromium version for update automation
 name: "Chromium: Update files from upstream"
 
 on:
+  #checkov:skip=CKV_GHA_7:Manual dispatch version inputs are intentionally required for Chromium update maintenance
   workflow_dispatch:
     inputs:
       NEW_CHROMIUM_MAJOR:
@@ -58,6 +59,20 @@ jobs:
               echo "$key=$value" >> "$GITHUB_ENV"
             done < CHROMIUM_VERSION
           fi
+
+      - name: Validate Chromium version inputs
+        env:
+          NEW_CHROMIUM_MAJOR: ${{ github.event.inputs.NEW_CHROMIUM_MAJOR }}
+          NEW_CHROMIUM_MINOR: ${{ github.event.inputs.NEW_CHROMIUM_MINOR }}
+          NEW_CHROMIUM_BUILD: ${{ github.event.inputs.NEW_CHROMIUM_BUILD }}
+          NEW_CHROMIUM_PATCH: ${{ github.event.inputs.NEW_CHROMIUM_PATCH }}
+        run: |
+          for version_part in "$NEW_CHROMIUM_MAJOR" "$NEW_CHROMIUM_MINOR" "$NEW_CHROMIUM_BUILD" "$NEW_CHROMIUM_PATCH"; do
+            if [[ ! "$version_part" =~ ^[0-9]+$ ]]; then
+              echo "::error::Invalid Chromium version component: $version_part"
+              exit 1
+            fi
+          done
 
       - name: Listing source files
         run: find . -type f | sed 's#\./#/#g' | grep -vFi '.gitignore' > /tmp/source_files.txt
