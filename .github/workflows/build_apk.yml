@@ -1,5 +1,5 @@
 # Build APKs for Relixor Browser
-name: 'Any branch: Build APK'
+name: "Any branch: Build APK"
 
 on:
   pull_request:

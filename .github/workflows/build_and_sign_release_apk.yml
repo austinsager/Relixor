@@ -1,5 +1,5 @@
 # Build APKs for Kiwi Browser Next
-# checkov:skip=CKV_GHA_7:Allowing manual workflow dispatch parameters for release targets
+#checkov:skip=CKV_GHA_7:Allowing manual workflow dispatch parameters for release targets
 name: "Kiwi: Build and sign release apk"
 
 on:

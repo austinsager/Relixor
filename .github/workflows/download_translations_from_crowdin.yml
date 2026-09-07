@@ -1,7 +1,6 @@
-name: 'Kiwi: Download translations from Crowdin'
+name: "Kiwi: Download translations from Crowdin"
 
-on:
-  workflow_dispatch
+on: workflow_dispatch
 
 permissions:
   contents: write
@@ -12,7 +11,7 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      
+
       - name: Downloading translations
         run: php toolbox/download_translations_from_crowdin.php ${{ secrets.CROWDIN_APIKEY }}
 

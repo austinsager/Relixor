@@ -1,20 +1,20 @@
-# checkov:skip=CKV_GHA_7:Manual workflow inputs are required to choose and transform icons
-name: 'Kiwi: Download icon from fontawesome'
+#checkov:skip=CKV_GHA_7:Manual workflow inputs are required to choose and transform icons
+name: "Kiwi: Download icon from fontawesome"
 
 on:
   workflow_dispatch:
     inputs:
       iconNameFA:
-        description: 'Name of the icon in Fontawesome'     
+        description: "Name of the icon in Fontawesome"
         required: true
       iconTypeFA:
-        description: 'Type of the icon in Fontawesome'     
+        description: "Type of the icon in Fontawesome"
         required: true
       fillColor:
-        description: 'Edit fill/stroke color of the icon'   
-        required: false 
+        description: "Edit fill/stroke color of the icon"
+        required: false
       fileNameInChromium:
-        description: 'Name of the icon in Chromium'     
+        description: "Name of the icon in Chromium"
         required: true
 
 permissions:
@@ -26,11 +26,11 @@ jobs:
     steps:
       - name: Checkout Repo
         uses: actions/checkout@v4
-          
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '10.x'
+          node-version: "10.x"
 
       - name: Configure FA package
         id: fa-package
@@ -48,16 +48,16 @@ jobs:
           fi
       - name: npm install FA package
         run: npm install --save ${{ steps.fa-package.outputs.package }}
-        
+
       - name: Install librsvg2
         run: sudo apt install librsvg2-bin
-      
+
       - name: Install ImageMagick
         run: sudo apt-get install imagemagick
-        
+
       - name: Execute Script - Replace icons with new FA ones
         run: bash ./toolbox/icon_update_script.sh "./node_modules/${{ steps.fa-package.outputs.module_path }}/svgs/${{ github.event.inputs.iconTypeFA }}/${{ github.event.inputs.iconNameFA }}.svg" "${{ github.event.inputs.fileNameInChromium }}" "${{ github.event.inputs.fillColor }}"
-      
+
       - name: Git Auto Commit
         uses: stefanzweifel/git-auto-commit-action@v4.11.0
         with:

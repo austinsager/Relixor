@@ -1,15 +1,15 @@
 # Import a file from Chromium, relative path to https://source.chromium.org/chromium/chromium/src
-# In case the file is in a drawable-* folder (e.g. drawable-mdpi), all the adjacent (mdpi, xhdpi, etc) assets for the same file will be imported. 
-# checkov:skip=CKV_GHA_7:Manual workflow input is required to choose the Chromium file path
-name: 'Chromium: Import file'
+# In case the file is in a drawable-* folder (e.g. drawable-mdpi), all the adjacent (mdpi, xhdpi, etc) assets for the same file will be imported.
+#checkov:skip=CKV_GHA_7:Manual workflow input is required to choose the Chromium file path
+name: "Chromium: Import file"
 
 on:
   workflow_dispatch:
     inputs:
       path:
-        description: 'Path in Chromium repository'     
+        description: "Path in Chromium repository"
         required: true
-        default: ''
+        default: ""
 
 permissions:
   contents: write
@@ -25,7 +25,7 @@ jobs:
 
       - name: Disable Git auto-packing
         run: git config --global gc.auto 0
-        
+
       - name: Setting-up GitHub username
         run: |
           git config --global user.email "github@actions"
