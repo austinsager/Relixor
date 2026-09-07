@@ -4,6 +4,7 @@
 name: "Chromium: Import file"
 
 on:
+  #checkov:skip=CKV_GHA_7:Manual dispatch input is intentionally required to select the Chromium file import target
   workflow_dispatch:
     inputs:
       path:

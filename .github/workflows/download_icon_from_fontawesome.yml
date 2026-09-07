@@ -2,6 +2,7 @@
 name: "Kiwi: Download icon from fontawesome"
 
 on:
+  #checkov:skip=CKV_GHA_7:Manual dispatch inputs are intentionally required to choose icon source and conversion target
   workflow_dispatch:
     inputs:
       iconNameFA:

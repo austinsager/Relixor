@@ -3,6 +3,7 @@
 name: "Kiwi: Build and sign release apk"
 
 on:
+  #checkov:skip=CKV_GHA_7:Manual dispatch flags are intentionally required for release publishing and announcements
   workflow_dispatch:
     inputs:
       prepareRelease:

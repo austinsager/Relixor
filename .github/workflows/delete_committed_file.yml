@@ -2,6 +2,7 @@
 name: "Any branch: Delete a committed file"
 
 on:
+  #checkov:skip=CKV_GHA_7:Manual dispatch input is intentionally required for repository history maintenance
   workflow_dispatch:
     inputs:
       filename:

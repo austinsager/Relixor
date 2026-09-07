@@ -2,6 +2,7 @@
 name: "Any branch: Rename directory"
 
 on:
+  #checkov:skip=CKV_GHA_7:Manual dispatch inputs are intentionally required for repository directory maintenance
   workflow_dispatch:
     inputs:
       source_directory:
